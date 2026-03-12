@@ -7,7 +7,7 @@ import { ControlBar } from './ControlBar';
 import { useAssessmentStore } from '../hooks/useAssessmentStore';
 import { useSettingsStore } from '../hooks/useSettingsStore';
 import { recordResponse as apiRecordResponse } from '../utils/api';
-import { getSectionFromDomain } from '../utils/questionParser';
+import { getSectionFromDomain, isMultiAnswerQuestion, getRequiredAnswerCount } from '../utils/questionParser';
 import { useTimer } from '../hooks/useTimer';
 import { calculateQuizTime, isTimeWarning } from '../utils/timing';
 import { playTimerWarning, playTimerExpired } from '../utils/sounds';
@@ -35,6 +35,7 @@ export function QuizSession({ onComplete, onExit }: QuizSessionProps) {
   useEffect(() => { soundEffectsRef.current = soundEffects; }, [soundEffects]);
 
   const [selectedAnswer, setSelectedAnswer] = React.useState<string | null>(null);
+  const [selectedAnswers, setSelectedAnswers] = React.useState<string[]>([]);
   const [sessionStarted, setSessionStarted] = React.useState(false);
   const warningPlayedRef = useRef(false);
 
@@ -68,33 +69,49 @@ export function QuizSession({ onComplete, onExit }: QuizSessionProps) {
   };
 
   const handleNext = () => {
-    if (selectedAnswer) {
-      const isCorrect = selectedAnswer === currentQuestion!.correct_answer;
-      recordResponse({
-        questionId: currentQuestion!.id,
-        userAnswer: selectedAnswer,
-        isCorrect,
-        timeSpentSeconds: 0,
-      });
-      if (sessionId) {
-        apiRecordResponse(
-          sessionId,
-          currentQuestion!.id,
-          selectedAnswer,
-          currentQuestion!.correct_answer,
-          isCorrect,
-          0,
-          getSectionFromDomain(currentQuestion!.domain),
-          currentQuestion!.domain
-        ).catch(() => {});
-      }
+    const multiAnswer = currentQuestion ? isMultiAnswerQuestion(currentQuestion.question) : false;
+    const hasAnswer = multiAnswer ? selectedAnswers.length > 0 : !!selectedAnswer;
+    if (!hasAnswer) return;
 
-      if (currentQuestionIndex < questions.length - 1) {
-        moveToNextQuestion();
-        setSelectedAnswer(null);
-      } else {
-        finishQuiz();
-      }
+    let userAnswer: string;
+    let isCorrect: boolean;
+
+    if (multiAnswer) {
+      const required = getRequiredAnswerCount(currentQuestion!.question);
+      userAnswer = selectedAnswers.join(',');
+      isCorrect =
+        selectedAnswers.length === required &&
+        selectedAnswers.includes(currentQuestion!.correct_answer);
+    } else {
+      userAnswer = selectedAnswer!;
+      isCorrect = selectedAnswer === currentQuestion!.correct_answer;
+    }
+
+    recordResponse({
+      questionId: currentQuestion!.id,
+      userAnswer,
+      isCorrect,
+      timeSpentSeconds: 0,
+    });
+    if (sessionId) {
+      apiRecordResponse(
+        sessionId,
+        currentQuestion!.id,
+        userAnswer,
+        currentQuestion!.correct_answer,
+        isCorrect,
+        0,
+        getSectionFromDomain(currentQuestion!.domain),
+        currentQuestion!.domain
+      ).catch(() => {});
+    }
+
+    if (currentQuestionIndex < questions.length - 1) {
+      moveToNextQuestion();
+      setSelectedAnswer(null);
+      setSelectedAnswers([]);
+    } else {
+      finishQuiz();
     }
   };
 
@@ -144,12 +161,32 @@ export function QuizSession({ onComplete, onExit }: QuizSessionProps) {
     { label: `D. ${currentQuestion.choices.D}`, value: 'D' },
   ];
 
+  const multiAnswer = isMultiAnswerQuestion(currentQuestion.question);
+  const requiredCount = multiAnswer ? getRequiredAnswerCount(currentQuestion.question) : 1;
+  const canNext = multiAnswer ? selectedAnswers.length > 0 : !!selectedAnswer;
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       <div className="flex-1 overflow-y-auto min-h-0 max-w-4xl mx-auto w-full p-6">
         <QuestionRenderer question={currentQuestion} />
-        <div className="mt-8 space-y-4">
-          <OptionGroup options={choices} selectedValue={selectedAnswer} onSelect={setSelectedAnswer} disabled={false} />
+        {multiAnswer && (
+          <p className="mt-4 text-sm text-blue-600 dark:text-blue-400 font-medium">
+            Select {requiredCount} answers
+          </p>
+        )}
+        <div className="mt-2 space-y-4">
+          {multiAnswer ? (
+            <OptionGroup
+              options={choices}
+              selectedValue={null}
+              onSelect={() => {}}
+              multiSelect
+              selectedValues={selectedAnswers}
+              onSelectMultiple={setSelectedAnswers}
+            />
+          ) : (
+            <OptionGroup options={choices} selectedValue={selectedAnswer} onSelect={setSelectedAnswer} disabled={false} />
+          )}
         </div>
       </div>
       <ControlBar
@@ -159,7 +196,7 @@ export function QuizSession({ onComplete, onExit }: QuizSessionProps) {
         currentQuestion={progress.current}
         totalQuestions={progress.total}
         onNext={handleNext}
-        canNext={!!selectedAnswer}
+        canNext={canNext}
       />
     </div>
   );
