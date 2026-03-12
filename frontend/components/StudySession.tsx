@@ -6,7 +6,7 @@ import { OptionGroup } from './OptionGroup';
 import { ControlBar } from './ControlBar';
 import { useAssessmentStore } from '../hooks/useAssessmentStore';
 import { recordResponse as apiRecordResponse } from '../utils/api';
-import { getSectionFromDomain, isMultiAnswerQuestion, getRequiredAnswerCount } from '../utils/questionParser';
+import { getSectionFromDomain } from '../utils/questionParser';
 
 interface StudySessionProps {
   onExit?: () => void;
@@ -25,7 +25,6 @@ export function StudySession({ onExit }: StudySessionProps) {
   } = useAssessmentStore();
 
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
   const [showExplanation, setShowExplanation] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
@@ -74,60 +73,31 @@ export function StudySession({ onExit }: StudySessionProps) {
   }
 
   const handleCheckAnswer = () => {
-    const multiAnswer = isMultiAnswerQuestion(currentQuestion.question);
-    if (multiAnswer) {
-      if (selectedAnswers.length === 0) return;
-      const required = getRequiredAnswerCount(currentQuestion.question);
-      const isCorrect =
-        selectedAnswers.length === required &&
-        selectedAnswers.includes(currentQuestion.correct_answer);
-      const userAnswer = selectedAnswers.join(',');
-      recordResponse({
-        questionId: currentQuestion.id,
-        userAnswer,
+    if (!selectedAnswer) return;
+    const isCorrect = selectedAnswer === currentQuestion.correct_answer;
+    recordResponse({
+      questionId: currentQuestion.id,
+      userAnswer: selectedAnswer,
+      isCorrect,
+      timeSpentSeconds: 0,
+    });
+    if (sessionId) {
+      apiRecordResponse(
+        sessionId,
+        currentQuestion.id,
+        selectedAnswer,
+        currentQuestion.correct_answer,
         isCorrect,
-        timeSpentSeconds: 0,
-      });
-      if (sessionId) {
-        apiRecordResponse(
-          sessionId,
-          currentQuestion.id,
-          userAnswer,
-          currentQuestion.correct_answer,
-          isCorrect,
-          0,
-          getSectionFromDomain(currentQuestion.domain),
-          currentQuestion.domain
-        ).catch(() => {});
-      }
-    } else {
-      if (!selectedAnswer) return;
-      const isCorrect = selectedAnswer === currentQuestion.correct_answer;
-      recordResponse({
-        questionId: currentQuestion.id,
-        userAnswer: selectedAnswer,
-        isCorrect,
-        timeSpentSeconds: 0,
-      });
-      if (sessionId) {
-        apiRecordResponse(
-          sessionId,
-          currentQuestion.id,
-          selectedAnswer,
-          currentQuestion.correct_answer,
-          isCorrect,
-          0,
-          getSectionFromDomain(currentQuestion.domain),
-          currentQuestion.domain
-        ).catch(() => {});
-      }
+        0,
+        getSectionFromDomain(currentQuestion.domain),
+        currentQuestion.domain
+      ).catch(() => {});
     }
     setShowExplanation(true);
   };
 
   const handleNext = () => {
     setSelectedAnswer(null);
-    setSelectedAnswers([]);
     setShowExplanation(false);
     if (currentQuestionIndex >= questions.length - 1) {
       setSessionComplete(true);
@@ -138,7 +108,6 @@ export function StudySession({ onExit }: StudySessionProps) {
 
   const handlePrevious = () => {
     setSelectedAnswer(null);
-    setSelectedAnswers([]);
     setShowExplanation(false);
     if (currentQuestionIndex > 0) {
       moveToQuestion(currentQuestionIndex - 1);
@@ -152,48 +121,23 @@ export function StudySession({ onExit }: StudySessionProps) {
     { label: `D. ${currentQuestion.choices.D}`, value: 'D' },
   ];
 
-  const multiAnswer = isMultiAnswerQuestion(currentQuestion.question);
-  const requiredCount = multiAnswer ? getRequiredAnswerCount(currentQuestion.question) : 1;
-  const canCheck = multiAnswer
-    ? selectedAnswers.length === requiredCount && !showExplanation
-    : !!selectedAnswer && !showExplanation;
+  const canCheck = !!selectedAnswer && !showExplanation;
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       <div className="flex-1 overflow-y-auto min-h-0 max-w-4xl mx-auto w-full p-6">
         <QuestionRenderer question={currentQuestion} showExplanation={showExplanation} />
 
-        {multiAnswer && !showExplanation && (
-          <p className="mt-4 text-sm text-blue-600 dark:text-blue-400 font-medium">
-            Select {requiredCount} answers
-          </p>
-        )}
-
         <div className="mt-2 space-y-4">
-          {multiAnswer ? (
-            <OptionGroup
-              options={choices}
-              selectedValue={null}
-              onSelect={() => {}}
-              disabled={showExplanation}
-              correctAnswer={showExplanation ? currentQuestion.correct_answer : undefined}
-              showCorrect={showExplanation}
-              multiSelect
-              selectedValues={selectedAnswers}
-              onSelectMultiple={setSelectedAnswers}
-              userAnswers={showExplanation ? selectedAnswers : []}
-            />
-          ) : (
-            <OptionGroup
-              options={choices}
-              selectedValue={selectedAnswer}
-              onSelect={setSelectedAnswer}
-              disabled={showExplanation}
-              correctAnswer={showExplanation ? currentQuestion.correct_answer : undefined}
-              showCorrect={showExplanation}
-              userAnswer={selectedAnswer}
-            />
-          )}
+          <OptionGroup
+            options={choices}
+            selectedValue={selectedAnswer}
+            onSelect={setSelectedAnswer}
+            disabled={showExplanation}
+            correctAnswer={showExplanation ? currentQuestion.correct_answer : undefined}
+            showCorrect={showExplanation}
+            userAnswer={selectedAnswer}
+          />
         </div>
       </div>
 

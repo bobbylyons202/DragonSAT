@@ -19,8 +19,19 @@ export function normalizeLatex(text: string): string {
     return `$$${cleaned}$$`;
   });
 
-  // Wrap bare math notation in $...$ when not already inside math delimiters.
-  // Split on existing math blocks so we only process plain text segments.
+  // Wrap \command{...}{...} patterns (like \frac{a b}{c}, \sqrt{x}) in $...$
+  // Must run before the bare command regex since braces can contain spaces
+  let tempParts = text.split(/(\$\$?[^$]+\$\$?)/);
+  for (let i = 0; i < tempParts.length; i += 2) {
+    tempParts[i] = tempParts[i].replace(
+      /\\([a-zA-Z]{2,})(\{[^}]*\})+/g,
+      (match) => `$${match}$`
+    );
+  }
+  text = tempParts.join('');
+
+  // Wrap remaining bare math notation in $...$
+  // Re-split to protect newly wrapped blocks from further processing
   const parts = text.split(/(\$\$?[^$]+\$\$?)/);
   for (let i = 0; i < parts.length; i += 2) {
     // Bare ^ exponents: x^2 → $x^2$, x^{n} → $x^{n}$
@@ -28,7 +39,7 @@ export function normalizeLatex(text: string): string {
       /([A-Za-z0-9_(]*[A-Za-z0-9_)]+)\^(\{[^}]+\}|[A-Za-z0-9_]+)/g,
       (_, base, exp) => `$${base}^{${exp.startsWith('{') ? exp.slice(1, -1) : exp}}$`
     );
-    // Bare LaTeX commands: \neq, \leq, \geq, etc. with optional surrounding tokens
+    // Bare LaTeX commands without brace args: \neq, \leq, etc.
     parts[i] = parts[i].replace(
       /(\S*)\\([a-zA-Z]{2,})(\S*)/g,
       (_, left, cmd, right) => `$${left}\\${cmd}${right}$`
@@ -77,26 +88,6 @@ export function parseQuestion(data: any): ParsedQuestion {
 
 export function parseQuestions(data: any[]): ParsedQuestion[] {
   return data.map(parseQuestion);
-}
-
-const MULTI_ANSWER_PATTERNS = [
-  /which\s+(two|both)\b/i,
-  /what\s+are\s+the\s+(two\s+)?(solutions|values|roots|answers)/i,
-  /select\s+all\s+that\s+apply/i,
-  /all\s+of\s+the\s+following\s+are/i,
-  /which\s+of\s+the\s+following\s+are\b/i,
-  /the\s+two\s+solutions/i,
-  /both\s+(values|solutions|roots|answers)/i,
-];
-
-export function isMultiAnswerQuestion(questionText: string): boolean {
-  return MULTI_ANSWER_PATTERNS.some((p) => p.test(questionText));
-}
-
-export function getRequiredAnswerCount(questionText: string): number {
-  if (/\b(two|2|both)\b/i.test(questionText)) return 2;
-  if (/\b(three|3)\b/i.test(questionText)) return 3;
-  return 1;
 }
 
 const MATH_DOMAINS = new Set([
