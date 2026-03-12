@@ -7,7 +7,7 @@ import { ControlBar } from './ControlBar';
 import { useAssessmentStore } from '../hooks/useAssessmentStore';
 import { useSettingsStore } from '../hooks/useSettingsStore';
 import { recordResponse as apiRecordResponse } from '../utils/api';
-import { getSectionFromDomain } from '../utils/questionParser';
+import { getSectionFromDomain, isMultiAnswerQuestion, getRequiredAnswerCount } from '../utils/questionParser';
 import { useTimer } from '../hooks/useTimer';
 import { calculateTestTime, isTimeExpired, isTimeWarning } from '../utils/timing';
 import { playTimerWarning, playTimerExpired } from '../utils/sounds';
@@ -35,6 +35,7 @@ export function TestSession({ onComplete, onExit }: TestSessionProps) {
   useEffect(() => { soundEffectsRef.current = soundEffects; }, [soundEffects]);
 
   const [selectedAnswer, setSelectedAnswer] = React.useState<string | null>(null);
+  const [selectedAnswers, setSelectedAnswers] = React.useState<string[]>([]);
   const [sessionStarted, setSessionStarted] = React.useState(false);
   const [reviewMode, setReviewMode] = React.useState(false);
   const warningPlayedRef = useRef(false);
@@ -61,6 +62,32 @@ export function TestSession({ onComplete, onExit }: TestSessionProps) {
   const currentQuestion = getCurrentQuestion();
   const progress = getProgress();
 
+  const persistMultiResponse = (answers: string[]) => {
+    const required = getRequiredAnswerCount(currentQuestion!.question);
+    const isCorrect =
+      answers.length === required &&
+      answers.includes(currentQuestion!.correct_answer);
+    const answer = answers.join(',');
+    recordResponse({
+      questionId: currentQuestion!.id,
+      userAnswer: answer,
+      isCorrect,
+      timeSpentSeconds: 0,
+    });
+    if (sessionId) {
+      apiRecordResponse(
+        sessionId,
+        currentQuestion!.id,
+        answer,
+        currentQuestion!.correct_answer,
+        isCorrect,
+        0,
+        getSectionFromDomain(currentQuestion!.domain),
+        currentQuestion!.domain
+      ).catch(() => {});
+    }
+  };
+
   const persistResponse = (answer: string) => {
     const isCorrect = answer === currentQuestion!.correct_answer;
     recordResponse({
@@ -84,12 +111,16 @@ export function TestSession({ onComplete, onExit }: TestSessionProps) {
   };
 
   const handleNext = () => {
+    const multiAnswer = currentQuestion ? isMultiAnswerQuestion(currentQuestion.question) : false;
     if (currentQuestionIndex < questions.length - 1) {
-      if (selectedAnswer) persistResponse(selectedAnswer);
+      if (multiAnswer) { if (selectedAnswers.length > 0) persistMultiResponse(selectedAnswers); }
+      else { if (selectedAnswer) persistResponse(selectedAnswer); }
       moveToNextQuestion();
       setSelectedAnswer(null);
+      setSelectedAnswers([]);
     } else {
-      if (selectedAnswer) persistResponse(selectedAnswer);
+      if (multiAnswer) { if (selectedAnswers.length > 0) persistMultiResponse(selectedAnswers); }
+      else { if (selectedAnswer) persistResponse(selectedAnswer); }
       setReviewMode(true);
     }
   };
@@ -152,12 +183,31 @@ export function TestSession({ onComplete, onExit }: TestSessionProps) {
     { label: `D. ${currentQuestion.choices.D}`, value: 'D' },
   ];
 
+  const multiAnswer = isMultiAnswerQuestion(currentQuestion.question);
+  const requiredCount = multiAnswer ? getRequiredAnswerCount(currentQuestion.question) : 1;
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       <div className="flex-1 overflow-y-auto min-h-0 max-w-4xl mx-auto w-full p-6">
         <QuestionRenderer question={currentQuestion} />
-        <div className="mt-8 space-y-4">
-          <OptionGroup options={choices} selectedValue={selectedAnswer} onSelect={setSelectedAnswer} disabled={false} />
+        {multiAnswer && (
+          <p className="mt-4 text-sm text-blue-600 dark:text-blue-400 font-medium">
+            Select {requiredCount} answers
+          </p>
+        )}
+        <div className="mt-2 space-y-4">
+          {multiAnswer ? (
+            <OptionGroup
+              options={choices}
+              selectedValue={null}
+              onSelect={() => {}}
+              multiSelect
+              selectedValues={selectedAnswers}
+              onSelectMultiple={setSelectedAnswers}
+            />
+          ) : (
+            <OptionGroup options={choices} selectedValue={selectedAnswer} onSelect={setSelectedAnswer} disabled={false} />
+          )}
         </div>
       </div>
       <ControlBar

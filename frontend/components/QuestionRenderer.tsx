@@ -3,6 +3,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
+import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { ParsedQuestion } from '../utils/questionParser';
@@ -33,7 +34,7 @@ export function QuestionRenderer({
         <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border-l-4 border-blue-500">
           <ReactMarkdown
             remarkPlugins={[remarkMath]}
-            rehypePlugins={[rehypeKatex]}
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw]}
             className="markdown text-gray-700 dark:text-gray-300"
           >
             {question.paragraph}
@@ -45,7 +46,7 @@ export function QuestionRenderer({
       <div className="text-lg text-gray-900 dark:text-gray-100">
         <ReactMarkdown
           remarkPlugins={[remarkMath]}
-          rehypePlugins={[rehypeKatex]}
+          rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw]}
           className="markdown"
         >
           {question.question}
@@ -59,7 +60,7 @@ export function QuestionRenderer({
             <strong>{choice}.</strong>{' '}
             <ReactMarkdown
               remarkPlugins={[remarkMath]}
-              rehypePlugins={[rehypeKatex]}
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw]}
               className="markdown inline"
             >
               {question.choices[choice as keyof typeof question.choices]}
@@ -74,7 +75,7 @@ export function QuestionRenderer({
           <h4 className="font-semibold text-green-900 dark:text-green-300 mb-2">Explanation:</h4>
           <ReactMarkdown
             remarkPlugins={[remarkMath]}
-            rehypePlugins={[rehypeKatex]}
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw]}
             className="markdown text-green-800 dark:text-green-300"
           >
             {question.explanation}
